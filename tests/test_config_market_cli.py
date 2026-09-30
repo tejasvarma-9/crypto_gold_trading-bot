@@ -107,3 +107,15 @@ def test_cli_reset_needs_confirmation(tmp_path):
     assert (tmp_path / "state.json").exists()
     assert main(["--config", config, "reset", "--yes"]) == 0
     assert not (tmp_path / "state.json").exists()
+
+
+def test_cli_timeframe_override(tmp_path, capsys):
+    config = _write_config(tmp_path)
+    assert main(["--config", config, "backtest", "--synthetic", "--timeframe", "4h"]) == 0
+    assert "(2190 bars)" in capsys.readouterr().out  # one year of 4h candles
+    assert main(["--config", config, "backtest", "--synthetic", "--timeframe", "4x"]) == 2
+
+
+def test_synthetic_default_is_one_year():
+    assert len(synthetic_ohlcv(timeframe="1h")) == 8_760
+    assert len(synthetic_ohlcv(timeframe="1d")) == 365

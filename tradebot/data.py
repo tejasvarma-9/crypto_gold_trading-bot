@@ -69,30 +69,29 @@ def save_csv(candles: pd.DataFrame, path: str | Path) -> None:
 
 
 def synthetic_ohlcv(
-    bars: int = 3_000,
+    bars: int | None = None,
     timeframe: str = "1h",
     start_price: float = 100.0,
     seed: int = 0,
     start: str = "2024-01-01",
+    hourly_volatility: float = 0.007,
 ) -> pd.DataFrame:
-    """Random-walk prices with alternating up/down/sideways regimes.
+    """Zero-drift random walk: prices with no pattern to exploit.
 
-    Only useful for checking that the pipeline runs end to end. Results on
-    synthetic data say nothing about whether a strategy makes money.
+    A backtest on this measures what fees and slippage cost a strategy with no
+    edge. A real-data result has to clearly beat it. ``bars`` defaults to one
+    year of candles; the default volatility is roughly BTC's.
     """
+    step = timeframe_seconds(timeframe)
+    bars = bars or 365 * 86_400 // step
     rng = np.random.default_rng(seed)
-    drifts = np.empty(bars)
-    i = 0
-    while i < bars:
-        length = int(rng.integers(100, 400))
-        drifts[i : i + length] = rng.choice([-0.0015, 0.0, 0.0015])
-        i += length
-    returns = drifts + rng.normal(0.0, 0.01, bars)
+    volatility = hourly_volatility * np.sqrt(step / 3_600)
+    returns = rng.normal(-0.5 * volatility**2, volatility, bars)
     close = start_price * np.exp(np.cumsum(returns))
     open_ = np.concatenate([[start_price], close[:-1]])
-    wick = np.abs(rng.normal(0.0, 0.004, (2, bars)))
+    wick = np.abs(rng.normal(0.0, volatility / 2, (2, bars)))
     high = np.maximum(open_, close) * (1 + wick[0])
     low = np.minimum(open_, close) * (1 - wick[1])
     volume = rng.uniform(10, 100, bars)
-    index = pd.date_range(start, periods=bars, freq=pd.Timedelta(seconds=timeframe_seconds(timeframe)), tz="UTC", name="time")
+    index = pd.date_range(start, periods=bars, freq=pd.Timedelta(seconds=step), tz="UTC", name="time")
     return pd.DataFrame({"open": open_, "high": high, "low": low, "close": close, "volume": volume}, index=index)

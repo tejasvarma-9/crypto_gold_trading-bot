@@ -75,3 +75,12 @@ def test_synthetic_run_is_consistent(cfg):
 def test_too_little_history_is_rejected(cfg):
     with pytest.raises(ValueError):
         run_backtest(candles_from_closes([1, 2, 3]), cfg)
+
+
+def test_same_size_benchmark_pays_the_same_costs(cfg):
+    candles = candles_from_closes(range(100, 201))  # price doubles, never a crossover
+    stats = run_backtest(candles, cfg, "BTC/USDT").stats
+
+    assert stats["buy_and_hold_return"] == pytest.approx(1.0)
+    # 25% of the account, 0.1% fee in and out (slippage is 0 in this fixture)
+    assert stats["same_size_hold_return"] == pytest.approx(0.25 * (200 * 0.999 / (100 * 1.001) - 1))

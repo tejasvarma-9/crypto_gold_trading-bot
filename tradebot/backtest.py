@@ -99,10 +99,17 @@ def _stats(equity: pd.Series, trades: list[Trade], candles: pd.DataFrame, cfg: C
     bars_per_year = 365 * 86_400 / timeframe_seconds(cfg.timeframe)  # crypto trades every day
     std = returns.std()
     sells = [t for t in trades if t.side == "sell"]
+    first, last = candles["close"].iloc[0], candles["close"].iloc[-1]
+    # The fair benchmark: hold the same slice of the account the strategy is
+    # allowed to use, paying the same fees and slippage once in and once out.
+    friction = (1 + cfg.slippage_pct) * (1 + cfg.fee_rate)
+    held = last * (1 - cfg.slippage_pct) * (1 - cfg.fee_rate) / (first * friction) - 1
     return {
         "final_equity": float(equity.iloc[-1]),
         "total_return": float(equity.iloc[-1] / cfg.starting_cash - 1),
-        "buy_and_hold_return": float(candles["close"].iloc[-1] / candles["close"].iloc[0] - 1),
+        "same_size_hold_return": float(cfg.risk.max_position_pct * held),
+        "position_pct": cfg.risk.max_position_pct,
+        "buy_and_hold_return": float(last / first - 1),
         "max_drawdown": float((1 - equity / equity.cummax()).max()),
         "sharpe": float(returns.mean() / std * math.sqrt(bars_per_year)) if std > 0 else 0.0,
         "round_trips": len(sells),
@@ -118,13 +125,14 @@ def format_report(result: BacktestResult) -> str:
     first, last = result.equity.index[0], result.equity.index[-1]
     lines = [
         f"{result.symbol}: {first:%Y-%m-%d} to {last:%Y-%m-%d} ({len(result.equity)} bars)",
-        f"  strategy return    {s['total_return']:+8.2%}   (final equity {s['final_equity']:,.2f})",
-        f"  buy & hold return  {s['buy_and_hold_return']:+8.2%}   (no fees)",
-        f"  max drawdown       {s['max_drawdown']:8.2%}",
-        f"  sharpe (annual)    {s['sharpe']:8.2f}",
-        f"  round trips        {s['round_trips']:8d}   win rate {s['win_rate']:.0%}",
-        f"  fees paid          {s['fees_paid']:8.2f}",
-        f"  time in market     {s['time_in_market']:8.0%}",
+        f"  strategy return        {s['total_return']:+8.2%}   (final equity {s['final_equity']:,.2f})",
+        f"  hold, same size        {s['same_size_hold_return']:+8.2%}   ({s['position_pct']:.0%} of equity, after fees; the fair benchmark)",
+        f"  hold, all in           {s['buy_and_hold_return']:+8.2%}   (100% of equity, no fees; not comparable)",
+        f"  max drawdown           {s['max_drawdown']:8.2%}",
+        f"  sharpe (annual)        {s['sharpe']:8.2f}",
+        f"  round trips            {s['round_trips']:8d}   win rate {s['win_rate']:.0%}",
+        f"  fees paid              {s['fees_paid']:8.2f}",
+        f"  time in market         {s['time_in_market']:8.0%}",
     ]
     if s["halted"]:
         lines.append("  HALTED by the max-drawdown kill switch")

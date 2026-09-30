@@ -36,7 +36,10 @@ def cmd_backtest(args, cfg: Config) -> int:
         sets = [(args.symbol or Path(args.csv).stem, load_csv(args.csv))]
     elif args.synthetic:
         sets = [(args.symbol or "SYNTHETIC", synthetic_ohlcv(timeframe=cfg.timeframe))]
-        print("Synthetic prices: this only checks the pipeline works, not that the strategy makes money.\n")
+        print(
+            "Random prices with no pattern: the result is roughly what fees and slippage cost.\n"
+            "A backtest on real data has to clearly beat this number to mean anything.\n"
+        )
     else:
         market = _market(cfg)
         until = datetime.now(timezone.utc)
@@ -109,14 +112,16 @@ def main(argv: list[str] | None = None) -> int:
     bt = sub.add_parser("backtest", help="replay history through the strategy")
     source = bt.add_mutually_exclusive_group()
     source.add_argument("--csv", help="candles saved by `fetch` (default: download from the exchange)")
-    source.add_argument("--synthetic", action="store_true", help="random prices; checks the pipeline only")
+    source.add_argument("--synthetic", action="store_true", help="a year of patternless random prices: the zero-edge cost baseline")
     bt.add_argument("--symbol", help="default: every symbol in the config")
     bt.add_argument("--days", type=int, default=365, help="history to download (default 365)")
+    bt.add_argument("--timeframe", help="candle size to test instead of the config's, e.g. 4h or 1d")
 
     fetch = sub.add_parser("fetch", help="download candles to a CSV file")
     fetch.add_argument("--symbol", required=True)
     fetch.add_argument("--days", type=int, default=365)
     fetch.add_argument("--out", required=True)
+    fetch.add_argument("--timeframe", help="candle size instead of the config's, e.g. 4h or 1d")
 
     paper = sub.add_parser("paper", help="trade live prices with simulated money")
     paper.add_argument("--once", action="store_true", help="run a single step and exit")
@@ -130,6 +135,9 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     try:
         cfg = _config(args.config)
+        if getattr(args, "timeframe", None):
+            cfg.timeframe = args.timeframe
+            cfg.validate()
     except (ConfigError, FileNotFoundError) as exc:
         print(exc, file=sys.stderr)
         return 2

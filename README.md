@@ -16,8 +16,9 @@ python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
-python -m tradebot backtest --synthetic   # offline check that everything runs
-python -m tradebot backtest --days 365    # replay the last year of real candles
+python -m tradebot backtest --synthetic   # zero-edge baseline: what costs alone do
+python -m tradebot backtest --days 730    # replay the last two years of real candles
+python -m tradebot backtest --days 730 --timeframe 4h   # same, on 4-hour candles
 python -m tradebot paper                  # paper trade live prices (Ctrl-C stops)
 python -m tradebot status                 # cash, positions, P&L
 python -m pytest                          # tests
@@ -32,9 +33,9 @@ server). Stopping and restarting is safe: the account lives in
 
 | Command | What it does |
 |---|---|
-| `backtest [--days N] [--symbol S]` | Downloads history and replays it through the strategy |
+| `backtest [--days N] [--symbol S] [--timeframe T]` | Downloads history and replays it through the strategy |
 | `backtest --csv file.csv` | Same, from a file saved by `fetch` (repeatable, no network) |
-| `backtest --synthetic` | Random prices; proves the pipeline runs, says nothing about profit |
+| `backtest --synthetic` | A year of patternless random prices: shows what fees and slippage alone cost |
 | `fetch --symbol S --days N --out file.csv` | Saves candles for offline backtests |
 | `paper [--once]` | Live prices, simulated fills. `--once` runs one step (handy for cron) |
 | `status` | Shows the paper account |
@@ -69,12 +70,38 @@ The other routes to gold for Indian residents are GOLDBEES (NSE) or MCX gold
 futures, both through an Indian broker's API. Offshore forex apps offering
 XAUUSD are not a legal option for Indian residents.
 
+## Judging a backtest
+
+The report prints two holding benchmarks. Only one is a fair comparison:
+
+- **hold, same size**: buy the same 25% slice of the account the strategy may
+  use, pay the same fees, hold to the end. This is the benchmark.
+- **hold, all in**: 100% invested with no fees. It's shown for context only.
+  Beating it in a falling market is easy for a strategy that is mostly in cash.
+
+A result means something only if it is positive, beats **hold, same size**, and
+clearly beats the `--synthetic` result, in both rising and falling periods.
+
+Costs dominate on short candles. Each round trip costs about 0.3% of the
+position (fee plus slippage, in and out), which is about 0.075% of the account
+at 25% size. On random prices (average of 40 simulated years, default settings):
+
+| Candles | Round trips / year | Zero-edge return / year |
+|---|---|---|
+| 1h | 80–97 | about -5% to -6.5% |
+| 4h | about 23 | about -1% |
+| 1d | about 3.5 | about -1% to -2% (mostly stop-outs) |
+
+The fixed 3% stop doesn't fit every asset and candle size. On hourly PAXG it
+almost never triggers; on daily BTC it stops out nearly every trade.
+
 ## Before real money
 
 Don't add a live mode until **every** box is ticked:
 
 - [ ] Backtested over at least two years, covering both up and down markets
-- [ ] Beats buy-and-hold after fees *on data you didn't tune the settings on*
+- [ ] Beats **hold, same size** and the `--synthetic` baseline *on data you
+      didn't tune the settings on* (see [Judging a backtest](#judging-a-backtest))
 - [ ] At least 4 weeks of `paper` trading, with results close to the backtest
 - [ ] You understand every trade in `state/trades.csv` and why it happened
 - [ ] Exchange API key is **trade-only**, with **withdrawals disabled** and an
