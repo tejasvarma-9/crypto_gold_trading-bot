@@ -1,0 +1,26 @@
+# Paper-trading config. No API keys belong in this file (paper mode needs none).
+
+mode: paper            # the only mode that exists
+exchange: binance      # any exchange id supported by ccxt; only public prices are used
+symbols:
+  - BTC/USDT
+  - PAXG/USDT          # PAX Gold: 1 token is backed by 1 troy ounce of gold
+timeframe: 1h          # candle size the strategy decides on
+starting_cash: 10000   # simulated USDT
+fee_rate: 0.001        # 0.1% per fill (Binance spot default)
+slippage_pct: 0.0005   # assume each fill is 0.05% worse than the quoted price
+min_order_value: 10    # skip orders smaller than this (exchanges reject tiny ones)
+poll_seconds: 60
+state_file: state/paper_account.json
+trade_log: state/trades.csv
+
+strategy:
+  fast: 20             # fast moving average, in candles
+  slow: 50             # slow moving average, in candles
+
+risk:
+  risk_per_trade: 0.01         # lose ~1% of equity if a stop is hit
+  stop_loss_pct: 0.03          # stop 3% below entry
+  max_position_pct: 0.25       # no symbol above 25% of equity
+  daily_loss_limit_pct: 0.03   # no new entries after -3% in a UTC day
+  max_drawdown_pct: 0.15       # -15% from peak: sell everything and halt
